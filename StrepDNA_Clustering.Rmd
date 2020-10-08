@@ -1,0 +1,313 @@
+##Initial Analysis
+```{r}
+getwd()
+setwd("C:/Users/rssch/Desktop/classes/Data Analysis Class 2019/Module 1")
+
+tbrDataNorm <- tbrData
+for (i in 1:dim(tbrData)[2])
+{
+ tbrDataNorm[,i] <- tbrData[,i]/sum(tbrData[,i])
+}
+
+summary(tbrDataNorm)
+
+
+tbrDataTrimmed <- tbrDataNorm[((tbrData$Control1 > 5)+(tbrData$Control2 > 5)+(tbrData$Control3 > 5)+
+                               (tbrData$Tbr1 > 5)+(tbrData$Tbr2 > 5)+(tbrData$Tbr3 > 5))>2,]
+
+tbrDataGenes <- tbrDataTrimmed[substr(row.names(tbrDataTrimmed),1,3)=="PMI",]
+
+
+head(tbrDataGenes,25)
+
+brDataMatrix <- sapply(tbrDataGenes,cbind)
+
+summary(tbrDataMatrix)
+
+
+palette <- colorRampPalette(c("blue", "red"))(n = 1000)
+heatmap(tbrDataMatrix,Rowv=NA,Colv=NA,labRow=c(""),col=palette)
+
+
+heatmap(tbrDataMatrix,Rowv=NA,labRow=c(""),col=palette)
+
+
+heatmap(tbrDataMatrix,Rowv=NA,labRow=c(""),col=palette,hclustfun=function (d){hclust(d,method="average")})
+
+
+plot(tbrDataMatrix[,"Tbr1"],tbrDataMatrix[,"Tbr2"])
+
+plot(tbrDataMatrix[,"Tbr1"],tbrDataMatrix[,"Control1"])
+
+
+plot(rbind(tbrDataMatrix[,"Tbr1"],tbrDataMatrix[,"Tbr1"]),rbind(tbrDataMatrix[,"Tbr2"],tbrDataMatrix[,"Control1"]),
+     col=rbind(rep(1,dim(tbrDataMatrix)[1]),rep(2,dim(tbrDataMatrix)[1])),
+     pch=rbind(rep(1,dim(tbrDataMatrix)[1]),rep(3,dim(tbrDataMatrix)[1])),xlim=c(0,0.001),ylim=c(0,0.001))
+
+
+cor(tbrDataMatrix[,"Tbr1"],tbrDataMatrix[,"Tbr2"])
+cor(tbrDataMatrix[,"Tbr1"],tbrDataMatrix[,"Control1"])
+
+
+correlationMatrix <- matrix(0,nrow=6,ncol=6)
+for (i in 1:6)
+{
+ for (j in 1:6)   
+ {
+  correlationMatrix[i,j]=cor(tbrDataMatrix[,i],tbrDataMatrix[,j])
+ }
+}
+correlationMatrix
+
+heatmap(correlationMatrix,Rowv=NA,Colv=NA,labRow=colnames(tbrDataMatrix),labCol=colnames(tbrDataMatrix),col=palette)
+
+kmeans4 <- kmeans(tbrDataMatrix,centers=4,iter.max=10,nstart=25)
+
+hist(kmeans4$cluster)
+
+
+sum(kmeans4$cluster == 1)
+sum(kmeans4$cluster == 2)
+sum(kmeans4$cluster == 3)
+sum(kmeans4$cluster == 4)
+
+
+heatmap(tbrDataMatrix[kmeans4$cluster==1,],labRow=rownames(tbrDataGenes[kmeans4$cluster==1,]),col=palette)
+
+
+write.table(rownames(tbrDataGenes[kmeans4$cluster==1,]),"InterestingCluster.txt",
+            col.names=FALSE,row.names=FALSE,quote=FALSE)
+
+heatmap(tbrDataMatrix[kmeans4$cluster==2,],labRow=c(""),Rowv=NA,col=palette)
+heatmap(tbrDataMatrix[kmeans4$cluster==3,],labRow=rownames(tbrDataGenes[kmeans4$cluster==3,]),col=palette)
+heatmap(tbrDataMatrix[kmeans4$cluster==4,],labRow=rownames(tbrDataGenes[kmeans4$cluster==4,]),col=palette)
+
+plot(tbrpr$rotation[,"PC1"],tbrpr$rotation[,"PC2"],col=c(1,1,1,2,2,2))
+
+plot(tbrpr$rotation[,"PC1"],tbrpr$rotation[,"PC2"],col=c(1,2,3,1,2,3))
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+setwd('/Users/divyadesadla/Desktop/CMU/CMUFall19/Data Science for Biological Sciences/Homework2')
+dir()
+
+```
+
+```{r}
+bigstrep <- read.table("BigStrepBacteriocins.txt")
+head(bigstrep)
+```
+
+```{r}
+colnames(bigstrep) <- c("query","subject","identity","length","mismatches","gaps","qstart","qend","sstart","send","evalue","bits","positives","frames")
+head(bigstrep)
+```
+
+```{r}
+streps <- unique(bigstrep[,"subject"])
+streps
+
+bigbacteriocins <- unique(bigstrep[,"query"])
+bigbacteriocins
+
+length2 <- length(streps)
+length2
+
+strain_length <- length(bigbacteriocins)
+strain_length
+```
+
+```{r}
+BigHitMatrix <- matrix(data=FALSE,nrow=length(streps),ncol=length(bigbacteriocins))
+rownames(BigHitMatrix) <- streps
+colnames(BigHitMatrix) <- bigbacteriocins
+for (i in 1:dim(bigstrep)[1])
+{
+    BigHitMatrix[bigstrep[i,"subject"],bigstrep[i,"query"]] <- TRUE
+}
+length(BigHitMatrix)
+```
+
+```{r}
+bigkilled <- unlist(lapply(read.table("BigKilled.txt"),
+                        function (x){as.character(x)}))
+bigkiller <- unlist(lapply(read.table("BigKiller.txt"),
+                        function (x){as.character(x)}))
+```
+
+```{r}
+ctable <- function (gene,bigkiller,bigkilled,BigHitMatrix)
+{
+ c11 <- sum(BigHitMatrix[bigkiller,gene])
+ c12 <- sum(BigHitMatrix[bigkilled,gene])
+ c21 <- length(bigkiller)-c11
+ c22 <- length(bigkilled)-c12
+ matrix(nrow=2,ncol=2,data=c(c11,c12,c21,c22))
+}
+```
+
+```{r}
+significanceMatrix <- matrix(nrow=dim(BigHitMatrix)[2],
+                             ncol=1,data=rep(NA,dim(BigHitMatrix)[2]))
+rownames(significanceMatrix) <- colnames(BigHitMatrix)
+for (gene in rownames(significanceMatrix)) 
+{
+ significanceMatrix[gene,1] <-  fisher.test(ctable(gene,
+                                                   bigkiller,
+                                                   bigkilled,
+                                                   BigHitMatrix))$p.value
+}
+significanceMatrix
+```
+
+```{r}
+rownames(subset(significanceMatrix,significanceMatrix[,1]<0.000001))
+```
+
+```{r}
+rownames(subset(significanceMatrix,
+                significanceMatrix[,1] <
+                0.000001/dim(significanceMatrix)[1]))
+```
+
+```{r}
+significanceMatrix[rownames(subset(significanceMatrix,
+                                      significanceMatrix[,1]<
+                                      0.000001/dim(significanceMatrix)[1])),]
+```
+
+```{r}
+significanceMatrix2 <- matrix(nrow=dim(BigHitMatrix)[2],
+                             ncol=1,data=rep(NA,dim(BigHitMatrix)[2]))
+rownames(significanceMatrix2) <- colnames(BigHitMatrix)
+for (gene in rownames(significanceMatrix2)) 
+{
+ significanceMatrix2[gene,1] <-  chisq.test(ctable(gene,
+                                                   bigkiller,
+                                                   bigkilled,
+                                                   BigHitMatrix))$p.value
+}
+significanceMatrix2
+
+```
+
+```{r}
+significanceMatrix2[rownames(subset(significanceMatrix2,
+                                      significanceMatrix2[,1]<
+                                      0.05/dim(significanceMatrix2)[1])),]
+```
+
+```{r}
+rownames(subset(significanceMatrix2,significanceMatrix2[,1]<0.05))
+```
+
+```{r}
+install.packages("seqinr")
+library("seqinr")
+lseqinr()
+```
+
+```{r}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("Biostrings")
+```
+
+```{r}
+gene1 <-ctable("Hun19A_630", bigkiller,bigkilled,BigHitMatrix)
+gene1
+
+gene2 <- ctable("LcpA", bigkiller,bigkilled,BigHitMatrix)
+gene2                                                 
+                                                   
+                                                   
+```
+
+```{r}
+strepGenomes <- read.fasta("StrepCompleteGenomes.fasta")
+bacteriocinHits <- read.table("StrepBacteriocins.txt")
+colnames(bacteriocinHits) <- c("query","subject","identity","length",
+                               "mismatches","gaps","qstart","qend",
+                               "sstart","send","evalue","bits",
+                               "positives","frames")
+genome1 <- unlist(strepGenomes[bacteriocinHits[1,"subject"]])
+homolog <- genome1[bacteriocinHits[1,"sstart"]:
+                   bacteriocinHits[1,"send"]]
+bacteriocinSeqs <- matrix(NA,nrow=dim(bacteriocinHits)[1],ncol=1)
+rownames(bacteriocinSeqs) <- rep("",dim(bacteriocinHits)[1])
+for (i in 1:dim(bacteriocinHits)[1])
+{
+    sstart <- bacteriocinHits[i,"sstart"]  
+    send <- bacteriocinHits[i,"send"]  
+    query <- bacteriocinHits[i,"query"]
+    subject <- bacteriocinHits[i,"subject"]
+    genome <- strepGenomes[[subject]]
+ 
+    if (sstart < send)
+    {
+     seq <- genome[sstart:send]
+    }
+    else
+    {
+     seq <- comp(rev(unlist(genome[send:sstart])))
+    }
+    print(paste("Row ",i,": Retrieved genomic sequence ",
+                paste(unlist(seq),collapse=''),
+                " of length ",length(seq)))
+    bacteriocinSeqs[i,1] <- paste(unlist(getTrans(seq)),collapse='')
+    print(paste("Translated to ",bacteriocinSeqs[i,1]))
+    rownames(bacteriocinSeqs)[i] <- paste(subject,":",query,":",
+                                          i,sep='')
+}
+
+```
+
+```{r}
+bacteriocinList <- as.list(bacteriocinSeqs)
+
+# We can then use the seqinr command "write.fasta()" to write them to 
+# a FASTA text file
+write.fasta(sequences=bacteriocinList,names=rownames(bacteriocinSeqs),
+            file.out="OurBacteriocinListHW.fasta")
+
+# It will then be useful to convert to another type of data structure
+bacteriocinList <- unlist(bacteriocinList)
+```
+
+```{r}
+bacteriocinList <- readAAStringSet("OurBacteriocinListHW.fasta")
+homologs <- bacteriocinList[grepl("TIGR4_538",names(bacteriocinList))]
+length(homologs)
+```
+
+```{r}
+sequenceCorrelationMatrix <- matrix(0,nrow=length(homologs),
+                                    ncol=length(homologs))
+for (i in 1:length(homologs))
+{
+ for (j in 1:length(homologs))   
+ {
+     sequenceCorrelationMatrix[i,j]=
+         pairwiseAlignment(pattern=homologs[i], subject=homologs[j], 
+                           gapOpening=10, gapExtension=1, 
+                           substitutionMatrix=data(BLOSUM62),
+                           scoreOnly=TRUE)
+ }
+}
+```
+
+```{r}
+rownames(sequenceCorrelationMatrix) <- names(homologs)
+colnames(sequenceCorrelationMatrix) <- names(homologs)
+palette <- colorRampPalette(c("blue", "red"))(n = 1000)
+heatmap(sequenceCorrelationMatrix,col=palette)
+```
+
+```{r}
+writeXStringSet(homologs,"MyAASequences.fasta")
+```
